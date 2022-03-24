@@ -1,0 +1,3 @@
+{
+	"cmd": ["/Users/talentwill/opt/anaconda3/bin/python", "-u","$file"],
+}
