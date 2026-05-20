@@ -109,10 +109,19 @@ for input in "$@"; do
     src_info=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$input" 2>/dev/null)
     src_mins=$(echo "$src_info / 60" | bc 2>/dev/null || echo "?")
 
+    # 检测源帧率，低于目标帧率时保留原始帧率
+    src_fps_raw=$(ffprobe -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$input" 2>/dev/null)
+    src_fps=$(echo "$src_fps_raw" | awk -F'/' '{if($2>0) printf "%.0f", $1/$2; else print $1}')
+    effective_fps=$FPS
+    if [ -n "$src_fps" ] && [ "$src_fps" -lt "$FPS" ] 2>/dev/null; then
+        effective_fps=$src_fps
+        echo "  源帧率 ${src_fps}fps 低于目标 ${FPS}fps，保留原始帧率"
+    fi
+
     if $SOFTWARE_MODE; then
-        mode_info="软编码 H.265 / CRF 28 / ${FPS}fps"
+        mode_info="软编码 H.265 / CRF 28 / ${effective_fps}fps"
     else
-        mode_info="硬件加速 H.265 / q:v ${QUALITY} / ${FPS}fps"
+        mode_info="硬件加速 H.265 / q:v ${QUALITY} / ${effective_fps}fps"
     fi
 
     echo "[$current/$total] 压缩中: $input"
@@ -125,12 +134,12 @@ for input in "$@"; do
 
     if $SOFTWARE_MODE; then
         cmd=(ffmpeg -i "$input"
-            -c:v libx265 -crf 28 -preset fast -r "$FPS" -tag:v hvc1
+            -c:v libx265 -crf 28 -preset fast -r "$effective_fps" -tag:v hvc1
             -c:a aac -b:a "$AUDIO_BITRATE"
             -movflags +faststart -y "$output")
     else
         cmd=(ffmpeg -i "$input"
-            -c:v hevc_videotoolbox -q:v "$QUALITY" -r "$FPS" -tag:v hvc1
+            -c:v hevc_videotoolbox -q:v "$QUALITY" -r "$effective_fps" -tag:v hvc1
             -c:a aac -b:a "$AUDIO_BITRATE"
             -movflags +faststart -y "$output")
     fi
